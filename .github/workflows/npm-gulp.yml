@@ -19,5 +19,8 @@ jobs:
       - run: npm run test:rls
       - run: npm run test:transactions
       - run: npx tsc --noEmit -p tsconfig.app.json
-      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx
+      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
       - run: npm run build
+      - run: npm audit --audit-level=low
