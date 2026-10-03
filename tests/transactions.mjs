@@ -1,0 +1,74 @@
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync, readdirSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const db = new PGlite();
+const id = n => `00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+await db.exec(`create role anon; create role authenticated; create role service_role bypassrls;
+create schema auth; create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+grant usage on schema public,auth to anon,authenticated,service_role;
+grant execute on function auth.uid() to anon,authenticated;
+insert into auth.users values ('${id(1)}'),('${id(2)}'),('${id(3)}'),('${id(4)}'),('${id(5)}');`);
+for(const file of readdirSync('supabase/migrations').filter(f=>f.endsWith('.sql')).sort()) await db.exec(readFileSync(`supabase/migrations/${file}`,'utf8'));
+await db.exec(`insert into platform_admins values ('${id(1)}',now());
+insert into stores(id,name) values ('${id(11)}','A'),('${id(12)}','B');
+insert into store_memberships(store_id,user_id,role) values ('${id(11)}','${id(2)}','owner'),('${id(11)}','${id(3)}','cashier'),('${id(12)}','${id(4)}','owner');`);
+let checks=0;
+async function login(n,role='authenticated') { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[n?id(n):'']); await db.exec(`set role ${role}`); }
+async function query(sql,args=[]) {return (await db.query(sql,args)).rows;}
+async function equal(sql,expected,args=[]) {assert.deepEqual(await query(sql,args),expected);checks++;}
+async function fail(fn,pattern) {await assert.rejects(fn,pattern);checks++;}
+const product=(store,p,name,price,active=true)=>query('select * from public.pos_save_product($1,$2,$3,$4,$5,$6)',[id(store),id(p),name,String(p),price,active]);
+const stock=(store,p,key,delta,note='استلام')=>query('select * from public.pos_adjust_stock($1,$2,$3,$4,$5)',[id(store),id(p),id(key),delta,note]);
+// Avoid expanding a volatile composite multiple times: select from function.
+const sell=(store,key,items,payment='cash')=>query('select * from public.pos_checkout($1,$2,$3::jsonb,$4)',[id(store),id(key),JSON.stringify(items),payment]);
+const item=(p,q)=>({product_id:id(p),quantity:q});
+await login(2); await product(11,101,'حليب',2.35); await product(11,102,'سكر',5); await stock(11,101,201,10); await stock(11,102,202,1);
+await stock(11,101,201,10); await equal('select stock from products where id=$1',[{stock:'10.000'}],[id(101)]);
+await fail(()=>stock(11,101,201,11),/POS_REQUEST_CONFLICT/);
+await fail(()=>stock(11,102,201,10),/POS_REQUEST_CONFLICT/);
+await fail(()=>stock(11,101,203,-11),/POS_INSUFFICIENT_STOCK/);
+await fail(()=>stock(11,101,204,0.0001),/POS_INVALID_STOCK/);
+await login(4); await product(12,103,'B only',8); await stock(12,103,205,10);
+await equal('select name from products',[{name:'B only'}]);
+await fail(()=>product(12,101,'Hijack',1),/POS_ACCESS_DENIED/);
+await login(3);
+await equal('select name from products order by name',[{name:'حليب'},{name:'سكر'}]);
+await fail(()=>product(11,104,'Unauthorized',1),/POS_ACCESS_DENIED/);
+await fail(()=>stock(11,101,206,1),/POS_ACCESS_DENIED/);
+for(const table of ['products','sales','sale_items','stock_movements']) {
+ await fail(()=>query(`delete from ${table}`),/permission denied/);
+}
+await fail(()=>query('update products set stock=100'),/permission denied/);
+await fail(()=>query('insert into products(id,store_id,name,price) values ($1,$2,$3,1)',[id(104),id(11),'bad']),/permission denied/);
+await fail(()=>sell(11,301,[item(101,2),item(102,2)]),/POS_INSUFFICIENT_STOCK/);
+await equal('select stock from products where id=$1',[{stock:'10.000'}],[id(101)]);
+await equal('select count(*)::int as n from sales',[{n:0}]);
+await equal('select count(*)::int as n from sale_items',[{n:0}]);
+await equal('select count(*)::int as n from stock_movements',[{n:2}]);
+await fail(()=>sell(11,302,[item(101,1),item(103,1)]),/POS_PRODUCT_UNAVAILABLE/);
+await fail(()=>sell(11,303,[{...item(101,1),price:0}]),/POS_INVALID_CART/);
+await fail(()=>sell(11,304,[item(101,1),item(101,1)]),/POS_INVALID_CART/);
+await fail(()=>sell(11,305,[item(101,0.0001)]),/POS_INVALID_CART/);
+await fail(()=>sell(11,306,[item(101,1)],'fake'),/POS_INVALID_CART/);
+const first=(await sell(11,307,[item(101,1.5),item(102,1)]))[0];
+assert.equal(first.total,'8.53'); checks++;
+const replay=(await sell(11,307,[item(102,1),item(101,1.5)]))[0]; assert.equal(replay.id,first.id);checks++;
+await equal('select stock from products where id=$1',[{stock:'8.500'}],[id(101)]);
+await equal('select count(*)::int as n from sales',[{n:1}]);
+await equal('select count(*)::int as n from stock_movements',[{n:4}]);
+await fail(()=>sell(11,307,[item(101,1)]),/POS_REQUEST_CONFLICT/);
+await fail(()=>sell(11,307,[item(101,1.5),item(102,1)],'card'),/POS_REQUEST_CONFLICT/);
+await login(2); await fail(()=>sell(11,307,[item(101,1.5),item(102,1)]),/POS_REQUEST_CONFLICT/);
+await product(11,101,'اسم جديد',9);
+await equal('select product_name,unit_price,total from sale_items where product_id=$1',[{product_name:'حليب',unit_price:'2.35',total:'3.53'}],[id(101)]);
+await product(11,101,'اسم جديد',9,false);
+await fail(()=>sell(11,308,[item(101,1)]),/POS_PRODUCT_UNAVAILABLE/);
+await login(4); await equal('select * from sales',[]); await equal('select * from sale_items',[]);
+await login(5); await equal('select * from products',[]); await fail(()=>sell(11,309,[item(101,1)]),/POS_ACCESS_DENIED/);
+await login(0,'anon'); await fail(()=>sell(11,310,[item(101,1)]),/permission denied/); await fail(()=>query('select * from products'),/permission denied/);
+await login(1); await equal('select count(*)::int as n from products',[{n:3}]); await db.exec(`update stores set active=false where id='${id(11)}'`);
+await login(3); await equal('select * from sales',[]); await fail(()=>sell(11,307,[item(101,1.5),item(102,1)]),/POS_ACCESS_DENIED/);
+await login(1); await db.exec(`update stores set active=true where id='${id(11)}'; delete from store_memberships where user_id='${id(3)}'`);
+await login(3); await equal('select * from products',[]); await fail(()=>sell(11,307,[item(101,1.5),item(102,1)]),/POS_ACCESS_DENIED/);
+await db.close(); console.log(`${checks} PostgreSQL transaction assertions passed (single-session; live concurrency not tested)`);

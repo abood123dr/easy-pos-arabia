@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:rls": "node tests/rls.mjs"
+    "test:rls": "node tests/rls.mjs",
+    "test:transactions": "node tests/transactions.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
