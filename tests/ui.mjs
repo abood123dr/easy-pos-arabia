@@ -29,7 +29,10 @@ try {
     executablePath: process.env.POS_TEST_CHROMIUM_PATH || undefined,
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+    timezoneId: "Asia/Riyadh",
+  });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const uid = "00000000-0000-0000-0000-000000000002",
@@ -49,6 +52,7 @@ try {
     createFail = true,
     creates = [],
     patches = [];
+  const reports = [];
   const stores = [{ id: sid, name: "متجر الاختبار", active: true }];
   const user = {
     id: uid,
@@ -129,6 +133,11 @@ try {
         return route.abort("failed");
       }
       data = { id: "movement" };
+    } else if (url.pathname.endsWith("/rpc/pos_sales_summary")) {
+      reports.push(req.postDataJSON());
+      data = [
+        { sales_count: 121, total: 128.53, cash_total: 8.53, card_total: 120 },
+      ];
     }
     await route.fulfill({
       status,
@@ -137,6 +146,45 @@ try {
     });
   });
   await page.goto("http://127.0.0.1:4187");
+  const manifest = await (
+    await page.request.get("http://127.0.0.1:4187/manifest.webmanifest")
+  ).json();
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.lang, "ar");
+  assert.equal(manifest.dir, "rtl");
+  for (const icon of manifest.icons) {
+    const response = await page.request.get("http://127.0.0.1:4187" + icon.src);
+    assert.equal(response.ok(), true);
+    const png = await response.body();
+    const [w, h] = icon.sizes.split("x").map(Number);
+    assert.equal(png.readUInt32BE(16), w);
+    assert.equal(png.readUInt32BE(20), h);
+  }
+  await page.getByText("تثبيت على الجهاز", { exact: true }).click();
+  await page.getByText("على iPhone:", { exact: false }).waitFor();
+  await page.context().setOffline(true);
+  await page.getByText("الاتصال منقطع.", { exact: false }).waitFor();
+  await page.context().setOffline(false);
+  await page
+    .getByText("الاتصال منقطع.", { exact: false })
+    .waitFor({ state: "hidden" });
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt");
+    Object.assign(event, {
+      prompt: async () => {
+        window.__installCalls = (window.__installCalls ?? 0) + 1;
+      },
+      userChoice: Promise.resolve({ outcome: "accepted" }),
+    });
+    window.dispatchEvent(event);
+  });
+  await page
+    .getByRole("button", { name: "تثبيت التطبيق", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "تثبيت التطبيق", exact: true })
+    .waitFor({ state: "hidden" });
+  assert.equal(await page.evaluate(() => window.__installCalls), 1);
   await page.getByLabel("البريد الإلكتروني").fill("owner@example.test");
   await page.getByLabel("كلمة المرور").fill("password");
   await page.getByRole("button", { name: "تسجيل الدخول", exact: true }).click();
@@ -170,6 +218,23 @@ try {
     true,
   );
   assert.deepEqual(errors, []);
+  await page
+    .getByRole("button", { name: "ملخص المبيعات", exact: true })
+    .click();
+  await page.getByLabel("من تاريخ").fill("2026-01-01");
+  await page.getByLabel("إلى تاريخ").fill("2026-01-01");
+  await page.getByRole("button", { name: "عرض الملخص" }).click();
+  await page.getByText("121", { exact: true }).waitFor();
+  assert.equal(reports.length, 1);
+  assert.deepEqual(reports[0], {
+    p_store_id: sid,
+    p_from: "2025-12-31T21:00:00.000Z",
+    p_until: "2026-01-01T21:00:00.000Z",
+  });
+  await page.getByLabel("إلى تاريخ").fill("2026-02-02");
+  await page.getByRole("button", { name: "عرض الملخص" }).click();
+  await page.getByText("اختر فترة صحيحة لا تتجاوز 31 يومًا.").waitFor();
+  assert.equal(reports.length, 1);
   // Owner never sees platform administration controls.
   assert.equal(
     await page.getByRole("region", { name: "إدارة المتاجر" }).count(),
@@ -222,7 +287,7 @@ try {
   assert.deepEqual(errors, []);
   await page.screenshot({ path: "/tmp/pos-admin-smoke.png", fullPage: true });
   console.log(
-    "UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
+    "PWA manifest/icons/install event/offline notice and sales summary timezone/limit passed. UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
   );
 } finally {
   await browser?.close();
