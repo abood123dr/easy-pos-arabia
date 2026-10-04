@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import StoreWorkspace from "./StoreWorkspace";
-import AdminAccounts from "./AdminAccounts";
+const StoreWorkspace = lazy(() => import("./StoreWorkspace"));
+const AdminAccounts = lazy(() => import("./AdminAccounts"));
 import AdminStores, { type Store } from "./AdminStores";
 
 export default function AccountHome({
@@ -124,13 +124,21 @@ export default function AccountHome({
   }
   if (!loading && !error && selected)
     return (
-      <StoreWorkspace
-        key={selected.id}
-        store={selected}
-        userId={userId}
-        isAdmin={isAdmin}
-        onBack={() => navigate(isAdmin ? "/super-admin/stores" : "/stores")}
-      />
+      <Suspense
+        fallback={
+          <main dir="rtl" className="p-6" role="status">
+            جارٍ فتح المتجر…
+          </main>
+        }
+      >
+        <StoreWorkspace
+          key={selected.id}
+          store={selected}
+          userId={userId}
+          isAdmin={isAdmin}
+          onBack={() => navigate(isAdmin ? "/super-admin/stores" : "/stores")}
+        />
+      </Suspense>
     );
   return (
     <main dir="rtl" className="min-h-screen bg-slate-50 p-4 sm:p-8">
@@ -222,7 +230,9 @@ export default function AccountHome({
           </div>
         )}
         {isAdmin && !loading && !error && adminTab === "accounts" && (
-          <AdminAccounts stores={stores} userId={userId} />
+          <Suspense fallback={<p role="status">جارٍ فتح الحسابات…</p>}>
+            <AdminAccounts stores={stores} userId={userId} />
+          </Suspense>
         )}
         {!loading && !error && (!isAdmin || adminTab === "stores") && (
           <>

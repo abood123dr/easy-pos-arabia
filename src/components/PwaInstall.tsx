@@ -27,14 +27,20 @@ export default function PwaInstall() {
       setPrompt(null);
     };
     const connection = () => setOnline(navigator.onLine);
+    const unavailable = () =>
+      setError(
+        "تعذر تجهيز صفحة انقطاع الاتصال. يمكنك استخدام النظام عبر الإنترنت والمحاولة عند فتحه مجددًا.",
+      );
     const media = window.matchMedia("(display-mode: standalone)");
     const displayChanged = () => setInstalled(standalone());
+    window.addEventListener("pos-pwa-unavailable", unavailable);
     window.addEventListener("beforeinstallprompt", available);
     window.addEventListener("appinstalled", done);
     window.addEventListener("online", connection);
     window.addEventListener("offline", connection);
     media.addEventListener("change", displayChanged);
     return () => {
+      window.removeEventListener("pos-pwa-unavailable", unavailable);
       window.removeEventListener("beforeinstallprompt", available);
       window.removeEventListener("appinstalled", done);
       window.removeEventListener("online", connection);

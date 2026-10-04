@@ -24,8 +24,9 @@ jobs:
       - run: npm run test:transactions
       - run: npm run test:accounts
       - run: npx tsc --noEmit -p tsconfig.app.json
-      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx src/pages/SalesSummary.tsx src/components/PwaInstall.tsx src/pages/AdminAccounts.tsx
+      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx src/pages/SalesSummary.tsx src/components/PwaInstall.tsx src/pages/AdminAccounts.tsx src/components/AppErrorBoundary.tsx src/main.tsx build/pwa.ts
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
       - run: npm run build
+      - run: npm run test:pwa
       - run: npm audit --audit-level=low
