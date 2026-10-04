@@ -18,7 +18,9 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<AuthGate />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/super-admin/*" element={<AuthGate />} />
+          <Route path="/stores" element={<AuthGate />} />
+          <Route path="/stores/:storeId" element={<AuthGate />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

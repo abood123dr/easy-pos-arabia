@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import StoreWorkspace from "./StoreWorkspace";
 import AdminAccounts from "./AdminAccounts";
@@ -17,8 +19,26 @@ export default function AccountHome({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const [adminTab, setAdminTab] = useState("stores");
-  const [selected, setSelected] = useState<Store | null>(null);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const adminTab =
+    pathname === "/super-admin/accounts"
+      ? "accounts"
+      : pathname === "/super-admin/stores"
+        ? "stores"
+        : "overview";
+  const selected = stores.find(
+    (store) => pathname === `/stores/${store.id}` && store.active,
+  );
+  const visibleStores = stores.filter(
+    (store) =>
+      store.name
+        .toLocaleLowerCase()
+        .includes(search.trim().toLocaleLowerCase()) &&
+      (filter === "all" || store.active === (filter === "active")),
+  );
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -55,14 +75,61 @@ export default function AccountHome({
     const result = await supabase?.auth.signOut({ scope: "local" });
     if (result?.error) setError("تعذر تسجيل الخروج. حاول مرة أخرى.");
   }
-  if (selected)
+  // Routes choose a view only; database permissions remain authoritative.
+  if (!loading && !error) {
+    if (pathname.startsWith("/stores/") && !selected) {
+      return (
+        <main dir="rtl" className="min-h-screen bg-slate-50 p-6">
+          <section className="mx-auto max-w-md rounded-xl border bg-white p-6 space-y-4">
+            <h1 className="text-xl font-bold">المتجر غير متاح</h1>
+            <p>قد يكون موقوفًا أو غير مرتبط بحسابك.</p>
+            <Button
+              onClick={() =>
+                navigate(isAdmin ? "/super-admin/stores" : "/stores", {
+                  replace: true,
+                })
+              }
+            >
+              العودة إلى المتاجر
+            </Button>
+          </section>
+        </main>
+      );
+    }
+    if (
+      pathname === "/" ||
+      (!isAdmin && pathname.startsWith("/super-admin")) ||
+      (isAdmin &&
+        pathname.startsWith("/super-admin") &&
+        ![
+          "/super-admin",
+          "/super-admin/stores",
+          "/super-admin/accounts",
+        ].includes(pathname))
+    ) {
+      const onlyStore = !isAdmin && stores.length === 1 && stores[0].active;
+      return (
+        <Navigate
+          replace
+          to={
+            isAdmin
+              ? "/super-admin"
+              : onlyStore
+                ? `/stores/${stores[0].id}`
+                : "/stores"
+          }
+        />
+      );
+    }
+  }
+  if (!loading && !error && selected)
     return (
       <StoreWorkspace
         key={selected.id}
         store={selected}
         userId={userId}
         isAdmin={isAdmin}
-        onBack={() => setSelected(null)}
+        onBack={() => navigate(isAdmin ? "/super-admin/stores" : "/stores")}
       />
     );
   return (
@@ -85,28 +152,68 @@ export default function AccountHome({
           نسخة قيد التطوير. لم يتم ربط قاعدة البيانات الفعلية واختبارها بعد.
         </div>
         {isAdmin && !loading && !error && (
-          <nav className="flex gap-2" aria-label="إدارة المنصة">
+          <nav className="flex flex-wrap gap-2" aria-label="إدارة المنصة">
+            <Button
+              variant={adminTab === "overview" ? "default" : "outline"}
+              aria-current={adminTab === "overview" ? "page" : undefined}
+              onClick={() => navigate("/super-admin")}
+            >
+              نظرة عامة
+            </Button>
             <Button
               variant={adminTab === "stores" ? "default" : "outline"}
-              onClick={() => setAdminTab("stores")}
+              aria-current={adminTab === "stores" ? "page" : undefined}
+              onClick={() => navigate("/super-admin/stores")}
             >
               المتاجر
             </Button>
             <Button
               variant={adminTab === "accounts" ? "default" : "outline"}
-              onClick={() => setAdminTab("accounts")}
+              aria-current={adminTab === "accounts" ? "page" : undefined}
+              onClick={() => navigate("/super-admin/accounts")}
             >
               الحسابات
             </Button>
           </nav>
         )}
-        {isAdmin && !loading && !error && adminTab === "accounts" && (
-          <AdminAccounts stores={stores} userId={userId} />
+        {isAdmin && !loading && !error && adminTab === "overview" && (
+          <section className="space-y-5" aria-label="نظرة عامة على المنصة">
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                ["إجمالي المتاجر", stores.length],
+                ["متاجر نشطة", stores.filter((store) => store.active).length],
+                [
+                  "متاجر موقوفة",
+                  stores.filter((store) => !store.active).length,
+                ],
+              ].map(([label, count]) => (
+                <article key={label} className="rounded-xl border bg-white p-5">
+                  <h2 className="text-slate-600">{label}</h2>
+                  <p className="mt-2 text-3xl font-bold">{count}</p>
+                </article>
+              ))}
+            </div>
+            <section className="rounded-xl border bg-white p-5 space-y-3">
+              <h2 className="text-lg font-bold">إدارة متاجرك</h2>
+              <p className="text-slate-600">
+                أضف متجرًا، ثم أنشئ حساب المالك والكاشير من الحسابات.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={() => navigate("/super-admin/stores")}>
+                  إدارة المتاجر
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/super-admin/accounts")}
+                >
+                  إدارة الحسابات
+                </Button>
+              </div>
+            </section>
+          </section>
         )}
-        {isAdmin && adminTab === "accounts" && loading && (
-          <p role="status">جارٍ التحميل…</p>
-        )}
-        {isAdmin && adminTab === "accounts" && error && (
+        {loading && <p role="status">جارٍ تحميل صلاحيات الحساب…</p>}
+        {error && (
           <div role="alert" className="space-y-3">
             <p>{error}</p>
             <Button onClick={() => setRetry((v) => v + 1)}>
@@ -114,7 +221,10 @@ export default function AccountHome({
             </Button>
           </div>
         )}
-        {(!isAdmin || adminTab === "stores") && (
+        {isAdmin && !loading && !error && adminTab === "accounts" && (
+          <AdminAccounts stores={stores} userId={userId} />
+        )}
+        {!loading && !error && (!isAdmin || adminTab === "stores") && (
           <>
             {isAdmin && !loading && !error && (
               <AdminStores
@@ -122,19 +232,31 @@ export default function AccountHome({
                 onChanged={() => setRetry((v) => v + 1)}
               />
             )}
-            <h2 className="text-lg font-bold">فتح متجر</h2>
-            {loading ? (
-              <p role="status">جارٍ تحميل المتاجر…</p>
-            ) : error ? (
-              <div role="alert" className="space-y-3">
-                <p>{error}</p>
-                <Button onClick={() => setRetry((v) => v + 1)}>
-                  إعادة المحاولة
-                </Button>
-              </div>
-            ) : stores.length ? (
+            <h2 className="text-lg font-bold">
+              {isAdmin ? "الدخول إلى متجر" : "اختر متجرك"}
+            </h2>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                className="min-w-0 flex-1 basis-48"
+                aria-label="بحث المتاجر"
+                placeholder="ابحث باسم المتجر"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <select
+                aria-label="حالة المتجر"
+                className="rounded-md border bg-white p-2"
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+              >
+                <option value="all">كل المتاجر</option>
+                <option value="active">النشطة</option>
+                <option value="paused">الموقوفة</option>
+              </select>
+            </div>
+            {stores.length ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                {stores.map((store) => (
+                {visibleStores.map((store) => (
                   <article
                     key={store.id}
                     className="rounded-xl border bg-white p-5"
@@ -146,12 +268,15 @@ export default function AccountHome({
                     <Button
                       className="mt-4"
                       disabled={!store.active}
-                      onClick={() => setSelected(store)}
+                      onClick={() => navigate(`/stores/${store.id}`)}
                     >
                       فتح المتجر
                     </Button>
                   </article>
                 ))}
+                {!visibleStores.length && (
+                  <p role="status">لا توجد متاجر تطابق البحث.</p>
+                )}
               </div>
             ) : (
               <section className="rounded-xl border bg-white p-6">

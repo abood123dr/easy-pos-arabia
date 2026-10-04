@@ -226,12 +226,12 @@ try {
   await page.getByLabel("البريد الإلكتروني").fill("owner@example.test");
   await page.getByLabel("كلمة المرور").fill("password");
   await page.getByRole("button", { name: "تسجيل الدخول", exact: true }).click();
-  await page.getByRole("button", { name: "فتح المتجر" }).click();
+  await page.getByRole("heading", { name: "متجر الاختبار", exact: true }).waitFor();
   await page.getByRole("button", { name: /حليب/ }).click();
   await page.getByRole("button", { name: "حفظ البيع", exact: true }).click();
   await page.getByText("طلب البيع قيد التحقق.", { exact: false }).waitFor();
   await page.reload();
-  await page.getByRole("button", { name: "فتح المتجر" }).click();
+  await page.getByRole("heading", { name: "متجر الاختبار", exact: true }).waitFor();
   await page.getByRole("button", { name: "التحقق وإعادة المحاولة" }).click();
   await page.getByText(/حُفظت الفاتورة رقم/).waitFor();
   assert.equal(requests.length, 2);
@@ -243,7 +243,7 @@ try {
   await page.getByRole("button", { name: "حفظ حركة المخزون" }).click();
   await page.getByRole("button", { name: "إعادة محاولة الطلب نفسه" }).waitFor();
   await page.reload();
-  await page.getByRole("button", { name: "فتح المتجر" }).click();
+  await page.getByRole("heading", { name: "متجر الاختبار", exact: true }).waitFor();
   await page.getByRole("button", { name: "المنتجات والمخزون" }).click();
   await page.getByRole("button", { name: "إعادة محاولة الطلب نفسه" }).click();
   await page.getByText("تم تسجيل حركة المخزون.").waitFor();
@@ -278,8 +278,16 @@ try {
     await page.getByRole("region", { name: "إدارة المتاجر" }).count(),
     0,
   );
+  assert.equal(new URL(page.url()).pathname, `/stores/${sid}`);
+  await page.goto("http://127.0.0.1:4187/super-admin/accounts");
+  await page.getByRole("heading", { name: "متجر الاختبار", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, `/stores/${sid}`);
+  assert.equal(await page.getByRole("navigation", { name: "إدارة المنصة" }).count(), 0);
   admin = true;
-  await page.reload();
+  await page.goto("http://127.0.0.1:4187/");
+  await page.getByRole("region", { name: "نظرة عامة على المنصة" }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/super-admin");
+  await page.getByRole("button", { name: "المتاجر", exact: true }).click();
   await page.getByLabel("متجر جديد", { exact: true }).fill("متجر إضافي");
   await page.getByRole("button", { name: "إضافة المتجر" }).click();
   await page.getByText("تعذر حفظ التغيير.", { exact: false }).waitFor();
@@ -318,6 +326,21 @@ try {
       true,
     );
   }
+  await page.getByLabel("بحث المتاجر").fill("لا يوجد");
+  await page.getByText("لا توجد متاجر تطابق البحث.").waitFor();
+  assert.equal(await page.getByRole("button", { name: "فتح المتجر", exact: true }).count(), 0);
+  await page.getByLabel("بحث المتاجر").fill("اسم محدث");
+  assert.equal(await page.getByRole("button", { name: "فتح المتجر", exact: true }).count(), 1);
+  await page.getByRole("button", { name: "فتح المتجر", exact: true }).click();
+  await page.getByRole("complementary", { name: "وضع مدير المنصة" }).waitFor();
+  await page.reload();
+  await page.getByRole("complementary", { name: "وضع مدير المنصة" }).waitFor();
+  assert.equal(new URL(page.url()).pathname, `/stores/${sid}`);
+  await page.getByRole("button", { name: "العودة لإدارة المنصة", exact: true }).click();
+  assert.equal(new URL(page.url()).pathname, "/super-admin/stores");
+  await page.goto("http://127.0.0.1:4187/stores/00000000-0000-0000-0000-000000000999");
+  await page.getByRole("heading", { name: "المتجر غير متاح" }).waitFor();
+  await page.getByRole("button", { name: "العودة إلى المتاجر", exact: true }).click();
   const color = await page
     .getByRole("button", { name: "إضافة المتجر" })
     .evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -379,8 +402,28 @@ try {
     );
   }
   await page.screenshot({ path: "/tmp/pos-admin-smoke.png", fullPage: true });
+  admin = false;
+  await page.goto("http://127.0.0.1:4187/");
+  await page.waitForURL("**/stores");
+  await page.getByRole("heading", { name: "متاجري", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/stores");
+  assert.equal(await page.getByRole("navigation", { name: "إدارة المنصة" }).count(), 0);
+  await page.getByLabel("حالة المتجر").selectOption("paused");
+  await page.getByText("لا توجد متاجر تطابق البحث.").waitFor();
+  await page.getByLabel("حالة المتجر").selectOption("active");
+  assert.equal(await page.getByRole("button", { name: "فتح المتجر", exact: true }).count(), 2);
+  stores[0].active = false;
+  await page.goto(`http://127.0.0.1:4187/stores/${sid}`);
+  await page.getByRole("heading", { name: "المتجر غير متاح" }).waitFor();
+  await page.getByRole("button", { name: "العودة إلى المتاجر", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "فتح المتجر", exact: true }).first().isDisabled(), true);
+  stores.length = 0;
+  await page.goto("http://127.0.0.1:4187/");
+  await page.getByRole("heading", { name: "لا توجد متاجر مرتبطة بحسابك" }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/stores");
+  assert.deepEqual(errors, []);
   console.log(
-    "Account creation refresh retry/no saved password/role change/revoke confirmation passed. PWA manifest/icons/install event/offline notice and sales summary timezone/limit passed. UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
+    "Role routing, admin dashboard, search, store mode, deep link refresh and inaccessible store passed. Account creation refresh retry/no saved password/role change/revoke confirmation passed. PWA manifest/icons/install event/offline notice and sales summary timezone/limit passed. UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
   );
 } finally {
   await browser?.close();
