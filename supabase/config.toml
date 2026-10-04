@@ -1,0 +1,7 @@
+project_id = "lamha-pos"
+
+[auth]
+enable_signup = false
+
+[functions.pos-accounts]
+verify_jwt = true

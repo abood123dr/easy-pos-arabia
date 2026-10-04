@@ -1,39 +1,32 @@
-
+name: SaaS foundation checks
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
-
+    branches: [main]
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
     steps:
-    - uses: actions/checkout@v4
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-    - name: Build
-      run: |
-        npm install
-        gulp
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.7.7
+      - run: deno check supabase/functions/pos-accounts/index.ts
+      - run: npm run test:rls
+      - run: npm run test:transactions
+      - run: npm run test:accounts
+      - run: npx tsc --noEmit -p tsconfig.app.json
+      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx src/pages/SalesSummary.tsx src/components/PwaInstall.tsx src/pages/AdminAccounts.tsx src/components/AppErrorBoundary.tsx src/main.tsx build/pwa.ts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+      - run: npm run build
+      - run: npm run test:pwa
+      - run: npm audit --audit-level=low
