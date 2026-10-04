@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "test:rls": "node tests/rls.mjs",
     "test:transactions": "node tests/transactions.mjs",
-    "test:ui": "node tests/ui.mjs"
+    "test:ui": "node tests/ui.mjs",
+    "test:accounts": "node --experimental-strip-types tests/accounts-handler.mjs && node tests/accounts-db.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

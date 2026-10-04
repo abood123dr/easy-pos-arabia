@@ -133,8 +133,7 @@ export default function AdminStores({ stores, onChanged }: Props) {
           )}
         </div>
         <p className="text-sm text-slate-500">
-          إنشاء المتجر لا ينشئ حساب صاحبه. إدارة حسابات المالك والكاشير قيد
-          التجهيز.
+          بعد إضافة المتجر، افتح الحسابات لإضافة المالك والكاشير.
         </p>
       </form>
       {error && (

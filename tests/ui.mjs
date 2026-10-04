@@ -53,6 +53,11 @@ try {
     creates = [],
     patches = [];
   const reports = [];
+  const accounts = [];
+  let accountFail = true;
+  let memberRole = "cashier";
+  let revoked = false;
+  const memberId = "00000000-0000-0000-0000-000000000055";
   const stores = [{ id: sid, name: "متجر الاختبار", active: true }];
   const user = {
     id: uid,
@@ -105,7 +110,10 @@ try {
       } else if (url.searchParams.has("id"))
         data = stores.find((s) => s.id === url.searchParams.get("id").slice(3));
       else data = stores;
-    } else if (url.pathname.endsWith("/store_memberships"))
+    } else if (
+      url.pathname.endsWith("/store_memberships") &&
+      req.method() === "GET"
+    )
       data = { role: "owner" };
     else if (url.pathname.endsWith("/products"))
       data = [
@@ -133,6 +141,36 @@ try {
         return route.abort("failed");
       }
       data = { id: "movement" };
+    } else if (url.pathname.endsWith("/rpc/pos_account_members")) {
+      data =
+        accounts.length && !revoked
+          ? [
+              {
+                user_id: memberId,
+                email: "cashier@example.test",
+                role: memberRole,
+              },
+            ]
+          : [];
+    } else if (url.pathname.endsWith("/functions/v1/pos-accounts")) {
+      accounts.push(req.postDataJSON());
+      if (accountFail) {
+        accountFail = false;
+        return route.abort("failed");
+      }
+      data = { completed: true, user_id: memberId };
+    } else if (
+      url.pathname.endsWith("/store_memberships") &&
+      req.method() === "PATCH"
+    ) {
+      memberRole = req.postDataJSON().role;
+      data = { user_id: memberId };
+    } else if (
+      url.pathname.endsWith("/store_memberships") &&
+      req.method() === "DELETE"
+    ) {
+      revoked = true;
+      data = { user_id: memberId };
     } else if (url.pathname.endsWith("/rpc/pos_sales_summary")) {
       reports.push(req.postDataJSON());
       data = [
@@ -285,9 +323,64 @@ try {
     .evaluate((el) => getComputedStyle(el).backgroundColor);
   assert.notEqual(color, "rgba(0, 0, 0, 0)");
   assert.deepEqual(errors, []);
+  await page.getByRole("button", { name: "الحسابات", exact: true }).click();
+  await page.getByLabel("بريد الحساب").fill("cashier@example.test");
+  await page.getByLabel("الدور", { exact: true }).selectOption("cashier");
+  await page.getByLabel("كلمة مرور الحساب الجديد").fill("SafePassword12345!");
+  await page.getByRole("button", { name: "حفظ الحساب", exact: true }).click();
+  await page.getByText("تعذر تأكيد حفظ الحساب.", { exact: false }).waitFor();
+  const stored = await page.evaluate(() =>
+    sessionStorage.getItem(
+      "pos-account-pending:00000000-0000-0000-0000-000000000002",
+    ),
+  );
+  assert.equal(stored.includes("SafePassword"), false);
+  assert.equal(JSON.parse(stored).role, "cashier");
+  await page.reload();
+  await page.getByRole("button", { name: "الحسابات", exact: true }).click();
+  assert.equal(
+    await page.getByLabel("بريد الحساب").inputValue(),
+    "cashier@example.test",
+  );
+  assert.equal(
+    await page.getByLabel("كلمة مرور الحساب الجديد").inputValue(),
+    "",
+  );
+  await page.getByLabel("كلمة مرور الحساب الجديد").fill("SafePassword12345!");
+  await page
+    .getByRole("button", { name: "إعادة محاولة الطلب نفسه", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "تحويل إلى مالك", exact: true })
+    .waitFor();
+  assert.deepEqual(accounts[0], accounts[1]);
+  await page
+    .getByRole("button", { name: "تحويل إلى مالك", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "تحويل إلى كاشير", exact: true })
+    .waitFor();
+  assert.equal(memberRole, "owner");
+  await page.getByRole("button", { name: "إلغاء الوصول", exact: true }).click();
+  assert.equal(revoked, false);
+  await page
+    .getByRole("button", { name: "تأكيد إلغاء الوصول", exact: true })
+    .click();
+  await page.getByText("لا توجد حسابات مرتبطة ظاهرة.").waitFor();
+  assert.equal(revoked, true);
+  assert.deepEqual(errors, []);
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+  }
   await page.screenshot({ path: "/tmp/pos-admin-smoke.png", fullPage: true });
   console.log(
-    "PWA manifest/icons/install event/offline notice and sales summary timezone/limit passed. UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
+    "Account creation refresh retry/no saved password/role change/revoke confirmation passed. PWA manifest/icons/install event/offline notice and sales summary timezone/limit passed. UI mock integration passed: sales/stock refresh retries, admin create retry, rename, pause confirmation, activation and 3 viewport widths. Not a live Supabase test.",
   );
 } finally {
   await browser?.close();

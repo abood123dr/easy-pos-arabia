@@ -16,10 +16,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.7.7
+      - run: deno check supabase/functions/pos-accounts/index.ts
       - run: npm run test:rls
       - run: npm run test:transactions
+      - run: npm run test:accounts
       - run: npx tsc --noEmit -p tsconfig.app.json
-      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx src/pages/SalesSummary.tsx src/components/PwaInstall.tsx
+      - run: npx eslint src/auth/AuthGate.tsx src/pages/AccountHome.tsx src/lib/supabase.ts src/lib/pos.ts src/pages/StoreWorkspace.tsx src/pages/AdminStores.tsx src/pages/SalesSummary.tsx src/components/PwaInstall.tsx src/pages/AdminAccounts.tsx
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui
       - run: npm run build
