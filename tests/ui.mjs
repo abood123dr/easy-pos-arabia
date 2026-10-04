@@ -53,6 +53,7 @@ try {
     creates = [],
     patches = [];
   const reports = [];
+  const productWrites = [];
   const accounts = [];
   let accountFail = true;
   let memberRole = "cashier";
@@ -125,9 +126,14 @@ try {
           price: 2.35,
           stock: 10,
           active: true,
+          unit: "liter",
+          category: "ألبان",
         },
       ];
-    else if (url.pathname.endsWith("/rpc/pos_checkout")) {
+    else if (url.pathname.endsWith("/rpc/pos_save_product_details")) {
+      productWrites.push(req.postDataJSON());
+      data = { id: req.postDataJSON().p_id };
+    } else if (url.pathname.endsWith("/rpc/pos_checkout")) {
       requests.push(req.postDataJSON());
       if (fail) {
         fail = false;
@@ -227,6 +233,8 @@ try {
   await page.getByLabel("كلمة المرور").fill("password");
   await page.getByRole("button", { name: "تسجيل الدخول", exact: true }).click();
   await page.getByRole("heading", { name: "متجر الاختبار", exact: true }).waitFor();
+  await page.getByLabel("فئة المنتجات").selectOption("ألبان");
+  await page.getByRole("button", { name: /حليب/ }).getByText(/\/ لتر/).waitFor();
   await page.getByRole("button", { name: /حليب/ }).click();
   await page.getByRole("button", { name: "حفظ البيع", exact: true }).click();
   await page.getByText("طلب البيع قيد التحقق.", { exact: false }).waitFor();
@@ -237,6 +245,15 @@ try {
   assert.equal(requests.length, 2);
   assert.deepEqual(requests[0], requests[1]);
   await page.getByRole("button", { name: "المنتجات والمخزون" }).click();
+  await page.getByLabel("اسم المنتج", { exact: true }).fill("أرز");
+  await page.getByLabel("سعر البيع", { exact: true }).fill("10");
+  await page.getByLabel("وحدة البيع", { exact: true }).selectOption("kg");
+  await page.getByLabel("الفئة (اختياري)").fill("حبوب");
+  await page.getByRole("button", { name: "حفظ المنتج", exact: true }).click();
+  await page.getByText("تم حفظ المنتج.", { exact: true }).waitFor();
+  assert.equal(productWrites[0].p_store_id, sid);
+  assert.equal(productWrites[0].p_unit, "kg");
+  assert.equal(productWrites[0].p_category, "حبوب");
   await page.getByLabel("المنتج", { exact: true }).selectOption(pid);
   await page.getByLabel("الكمية المضافة أو المخصومة").fill("4");
   await page.getByLabel("سبب الحركة").fill("استلام");
